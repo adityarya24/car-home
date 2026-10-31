@@ -36,6 +36,19 @@ launcher icon, and you may be able to map your button to it.
 
 ## Install
 
+**Easiest: let your AI agent do it.** Connect the box to your computer over adb
+(USB or Wi-Fi debugging), then paste this into Claude Code, Codex or any agent
+that can run commands:
+
+```
+Read https://raw.githubusercontent.com/adityarya24/car-home/master/AGENT_INSTALL.md and follow it to check my car box and install Car Home.
+```
+
+It checks the box first, and stops before changing anything if the box isn't
+compatible.
+
+### By hand
+
 You need adb access to the box (Developer options, then USB or wireless
 debugging; on some boxes this menu is hidden).
 
