@@ -36,8 +36,31 @@ launcher icon, and you may be able to map your button to it.
 
 ## Install
 
-**Easiest: let your AI agent do it.** Connect the box to your computer over adb
-(USB or Wi-Fi debugging), then paste this into Claude Code, Codex or any agent
+### First: turn on adb (once)
+
+1. On your computer, install Android platform-tools (it has `adb`):
+   https://developer.android.com/tools/releases/platform-tools
+   (or `winget install Google.PlatformTools`, `brew install android-platform-tools`,
+   `sudo apt install adb`).
+2. On the box: Settings > About > tap **Build number** 7 times. Developer
+   options appears (on some boxes it sits under System).
+3. In Developer options, turn on **Wireless debugging** (box and computer on the
+   same Wi-Fi or hotspot). Tap it, then **Pair device with pairing code**, and on
+   the computer run:
+   ```
+   adb pair <ip>:<pairing-port>     # type the 6-digit code
+   adb connect <ip>:<port>          # the port shown on the Wireless debugging screen
+   adb devices                      # the box should be listed
+   ```
+   A USB cable works too if your box's USB port supports debugging (turn on
+   **USB debugging** instead).
+
+Some boxes hide Developer options or debugging completely. Then Car Home can't
+be installed on that box.
+
+### Easiest: let your AI agent do it
+
+With `adb devices` showing the box, paste this into Claude Code, Codex or any agent
 that can run commands:
 
 ```
@@ -48,9 +71,6 @@ It checks the box first, and stops before changing anything if the box isn't
 compatible.
 
 ### By hand
-
-You need adb access to the box (Developer options, then USB or wireless
-debugging; on some boxes this menu is hidden).
 
 1. Download `carhome.apk` from Releases (or build it, below) and put it next to
    `setup.sh`.
