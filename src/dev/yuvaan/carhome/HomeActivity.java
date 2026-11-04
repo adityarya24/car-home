@@ -39,6 +39,8 @@ import android.view.WindowInsetsController;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
 import android.widget.EditText;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextClock;
@@ -63,9 +65,10 @@ public class HomeActivity extends Activity {
 
     // Left column and Maps panel, as layout weights.
     private static final int LEFT_WEIGHT = 34, MAPS_WEIGHT = 66;
-    // Home address (set on the first tap of Home, long press to change) and
-    // the last location fix, kept for boots before Maps has a new one.
-    private static final String PLACES = "places", HOME = "home", LAST_LAT = "lat", LAST_LON = "lon";
+    // Home address (set on the first tap of Home, long press to change), the
+    // exact point of the suggestion it was picked from, and the last location
+    // fix, kept for boots before Maps has a new one.
+    private static final String PLACES = "places", HOME = "home", HOME_AT = "homeAt", LAST_LAT = "lat", LAST_LON = "lon";
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private TextView weather, songTitle, songArtist, playPause;
@@ -379,27 +382,117 @@ public class HomeActivity extends Activity {
     }
 
     private void goHome() {
-        String home = getSharedPreferences(PLACES, MODE_PRIVATE).getString(HOME, "");
+        SharedPreferences p = getSharedPreferences(PLACES, MODE_PRIVATE);
+        String home = p.getString(HOME, "");
         if (home.isEmpty()) {
             askHome();
             return;
         }
+        // A picked suggestion has its exact point; typed text is left to Maps to find.
+        String q = p.getString(HOME_AT, home);
         navigate(new Intent(Intent.ACTION_VIEW,
-                Uri.parse("google.navigation:q=" + Uri.encode(home))).setPackage(MAPS));
+                Uri.parse("google.navigation:q=" + Uri.encode(q))).setPackage(MAPS));
     }
 
+    // Typing shows up to four matching places near the car, so it is clear the
+    // right "Sector 21" is the one being saved. Picking one keeps its exact point.
     private void askHome() {
+        SharedPreferences p = getSharedPreferences(PLACES, MODE_PRIVATE);
         EditText in = new EditText(this);
         in.setSingleLine();
-        in.setHint("Area, city");
-        in.setText(getSharedPreferences(PLACES, MODE_PRIVATE).getString(HOME, ""));
+        in.setHint("Type your area, then pick it below");
+        in.setText(p.getString(HOME, ""));
+        LinearLayout list = new LinearLayout(this);
+        list.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(Ui.dp(this, 20), 0, Ui.dp(this, 20), 0);
+        box.addView(in);
+        box.addView(list);
+        // [0] = point of the picked suggestion, kept until the text is edited again.
+        String[] at = {p.getString(HOME_AT, null)};
+        int[] typed = {0};
+        boolean[] filling = {false};
+        in.addTextChangedListener(new TextWatcher() {
+            public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+            public void onTextChanged(CharSequence s, int a, int b, int c) {}
+            public void afterTextChanged(Editable s) {
+                if (filling[0]) return;
+                at[0] = null;
+                String q = s.toString().trim();
+                int mine = ++typed[0];
+                if (q.length() < 3) {
+                    list.removeAllViews();
+                    return;
+                }
+                // Wait for a pause in typing, and drop answers to older text.
+                main.postDelayed(() -> {
+                    if (mine != typed[0]) return;
+                    new Thread(() -> {
+                        List<String[]> found = suggestPlaces(HomeActivity.this, q);
+                        main.post(() -> {
+                            if (mine != typed[0]) return;
+                            list.removeAllViews();
+                            for (String[] f : found) {
+                                TextView row = Ui.text(HomeActivity.this, "📍 " + f[0], 15, Color.WHITE, false);
+                                row.setPadding(0, Ui.dp(HomeActivity.this, 9), 0, Ui.dp(HomeActivity.this, 9));
+                                row.setOnClickListener(v -> {
+                                    filling[0] = true;
+                                    in.setText(f[0]);
+                                    in.setSelection(f[0].length());
+                                    filling[0] = false;
+                                    at[0] = f[1];
+                                    list.removeAllViews();
+                                });
+                                list.addView(row);
+                            }
+                        });
+                    }).start();
+                }, 500);
+            }
+        });
         new AlertDialog.Builder(this)
                 .setTitle("Home address")
-                .setView(in)
-                .setPositiveButton("Save", (d, w) -> getSharedPreferences(PLACES, MODE_PRIVATE).edit()
-                        .putString(HOME, in.getText().toString().trim()).apply())
+                .setView(box)
+                .setPositiveButton("Save", (d, w) -> {
+                    SharedPreferences.Editor e = p.edit().putString(HOME, in.getText().toString().trim());
+                    if (at[0] != null) e.putString(HOME_AT, at[0]);
+                    else e.remove(HOME_AT);
+                    e.apply();
+                })
                 .setNegativeButton("Cancel", null)
                 .show();
+    }
+
+    // Places matching `q`, nearest to the car first: [label, "lat,lon"]. Photon
+    // (OSM data, made for search-as-you-type, no key) rather than the box's
+    // geocoder, which answers in Vietnamese. Empty when offline.
+    private static List<String[]> suggestPlaces(Context c, String q) {
+        List<String[]> out = new java.util.ArrayList<>();
+        SharedPreferences p = c.getSharedPreferences(PLACES, MODE_PRIVATE);
+        String near = p.contains(LAST_LAT) ? "&lat=" + p.getString(LAST_LAT, "") + "&lon=" + p.getString(LAST_LON, "") : "";
+        try {
+            URL u = new URL("https://photon.komoot.io/api/?limit=4&lang=en&q=" + Uri.encode(q) + near);
+            HttpURLConnection conn = (HttpURLConnection) u.openConnection();
+            conn.setRequestProperty("User-Agent", "CarHome/0.9");
+            conn.setConnectTimeout(6000);
+            conn.setReadTimeout(6000);
+            try (InputStream in = conn.getInputStream(); Scanner sc = new Scanner(in).useDelimiter("\\A")) {
+                org.json.JSONArray features = new JSONObject(sc.next()).getJSONArray("features");
+                for (int i = 0; i < features.length(); i++) {
+                    JSONObject f = features.getJSONObject(i), pr = f.getJSONObject("properties");
+                    org.json.JSONArray xy = f.getJSONObject("geometry").getJSONArray("coordinates");
+                    StringBuilder label = new StringBuilder();
+                    for (String k : new String[]{"name", "street", "district", "city", "state"}) {
+                        String v = pr.optString(k, "");
+                        if (!v.isEmpty() && label.indexOf(v) < 0) label.append(label.length() > 0 ? ", " : "").append(v);
+                    }
+                    if (label.length() > 0) out.add(new String[]{label.toString(), xy.getDouble(1) + "," + xy.getDouble(0)});
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return out;
     }
 
     private void shortcut(LinearLayout row, String label, View.OnClickListener l) {
