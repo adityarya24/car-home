@@ -378,7 +378,26 @@ public class HomeActivity extends Activity {
         shortcut(r, "⛽ Petrol", v -> navigate(new Intent(Intent.ACTION_VIEW,
                 Uri.parse("geo:0,0?q=" + Uri.encode("petrol pump"))).setPackage(MAPS)));
         shortcut(r, "🧸 Kids", v -> kidsMode());
+        // Car's ambient light kit: tap switches it on or off, long press puts it on music.
+        shortcut(r, "✨", v -> light((TextView) v, AmbientLight.TOGGLE));
+        r.getChildAt(3).setOnLongClickListener(v -> {
+            light((TextView) v, AmbientLight.MUSIC);
+            return true;
+        });
         return r;
+    }
+
+    private void light(TextView b, int job) {
+        if (!b.isEnabled()) return;
+        b.setEnabled(false);
+        b.setText("…");
+        AmbientLight.run(this, job, word -> {
+            b.setText("✨ " + word);
+            main.postDelayed(() -> {
+                b.setText("✨");
+                b.setEnabled(true);
+            }, 2500);
+        });
     }
 
     private void goHome() {
