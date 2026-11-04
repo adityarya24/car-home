@@ -13,7 +13,6 @@ import android.bluetooth.le.BluetoothLeScanner;
 import android.bluetooth.le.ScanCallback;
 import android.bluetooth.le.ScanResult;
 import android.content.Context;
-import android.content.SharedPreferences;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
@@ -33,7 +32,7 @@ import java.util.function.Consumer;
 // so the phone app can still connect when the box is idle.
 class AmbientLight {
     static final int TOGGLE = 0, MUSIC = 2;
-    private static final String TAG = "CarHomeLight", PREFS = "light", MAC = "mac";
+    private static final String TAG = "CarHomeLight";
     private static final UUID CCCD = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
     private static final String[] SERVICES = {"0000ae30-0000-1000-8000-00805f9b34fb", "0000af30-0000-1000-8000-00805f9b34fb",
             "0000ae00-0000-1000-8000-00805f9b34fb", "00010203-0405-0607-0809-0a0b0c0d1910"};
@@ -46,7 +45,7 @@ class AmbientLight {
     private BluetoothGattCharacteristic tx;
     private BluetoothLeScanner le;
     private ScanCallback scan;
-    private boolean finished;
+    private boolean finished, wrote;
     private final java.util.Set<String> seen = new java.util.HashSet<>();
 
     // done gets a short word for the button: "On", "Off", "Music", or why it failed.
@@ -67,13 +66,10 @@ class AmbientLight {
             return;
         }
         main.postDelayed(() -> finish("No light"), 15000);
-        String mac = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(MAC, null);
-        if (mac != null) {
-            connect(bt.getRemoteDevice(mac));
-            return;
-        }
-        // First time: find the kit. It advertises as "Pocket Link ..."; its app
-        // shows any "Pocket" device as "Blaupunkt M18".
+        // Scan every time: the kit uses a random BLE address, and connecting to a
+        // saved one with getRemoteDevice() (public address type) fails with
+        // status 62. It advertises as "Pocket Link ..."; its app shows any
+        // "Pocket" device as "Blaupunkt M18".
         le = bt.getBluetoothLeScanner();
         scan = new ScanCallback() {
             @Override
@@ -85,8 +81,6 @@ class AmbientLight {
                 if (name == null || !(name.toLowerCase().startsWith("pocket") || name.contains("M18")) || scan == null) return;
                 le.stopScan(this);
                 scan = null;
-                c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-                        .putString(MAC, r.getDevice().getAddress()).apply();
                 Log.i(TAG, "found " + name + " " + r.getDevice().getAddress());
                 connect(r.getDevice());
             }
@@ -150,7 +144,10 @@ class AmbientLight {
                 byte[] v = ch.getValue();
                 Log.i(TAG, "got " + hex(v));
                 // Our answer: 2E 7C <len> <job> <values...> <checksum>
-                if (v == null || v.length < 6 || v[0] != 0x2E || (v[1] & 255) != 0x7C || v[3] != job) return;
+                // The kit reports the setting again after each write; act on the first answer only,
+                // or every echo flips the light back.
+                if (wrote || v == null || v.length < 6 || v[0] != 0x2E || (v[1] & 255) != 0x7C || v[3] != job) return;
+                wrote = true;
                 int[] vals = new int[(v[2] & 255) - 1];
                 for (int i = 0; i < vals.length; i++) vals[i] = v[4 + i] & 255;
                 String word;
