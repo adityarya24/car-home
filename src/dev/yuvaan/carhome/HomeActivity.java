@@ -367,7 +367,7 @@ public class HomeActivity extends Activity {
         return lp;
     }
 
-    // Big one-tap jobs under the music card; the apps are in the Dock.
+    // Three big one-tap jobs under the music card; the apps are in the Dock.
     private View shortcuts() {
         LinearLayout r = new LinearLayout(this);
         shortcut(r, "🏠 Home", v -> goHome());
@@ -378,71 +378,7 @@ public class HomeActivity extends Activity {
         shortcut(r, "⛽ Petrol", v -> navigate(new Intent(Intent.ACTION_VIEW,
                 Uri.parse("geo:0,0?q=" + Uri.encode("petrol pump"))).setPackage(MAPS)));
         shortcut(r, "🧸 Kids", v -> kidsMode());
-        shortcut(r, "💡", v -> askLight());
-        r.getChildAt(3).setOnLongClickListener(v -> {
-            navigate(new Intent().setClassName(LED, LED + ".YunlianLedColorSetNewActivity"));
-            return true;
-        });
         return r;
-    }
-
-    // The box's ambient LEDs follow one system property, "R-G-B-count-speed-mode",
-    // which the stock LED app (com.suding.led) writes and the firmware reads. Only
-    // the colour changes here; speed and effect stay as the LED app left them.
-    private static final String LED = "com.suding.led", LED_NOW = "persist.sd.color.type",
-            LED_SAVED = "persist.sd.original_color.type";
-    private static final int[] LIGHTS = {0xFF262A, 0xFF8746, 0xFFE822, 0x85FF1F, 0x00FFEF,
-            0x0076FA, 0x8A01FE, 0xFE01FB, 0xFFFFFF, 0x000000};
-
-    private void askLight() {
-        // Two rows of five, so the dots stay big enough to hit while driving.
-        LinearLayout dots = new LinearLayout(this);
-        dots.setOrientation(LinearLayout.VERTICAL);
-        dots.setGravity(Gravity.CENTER_HORIZONTAL);
-        dots.setPadding(Ui.dp(this, 12), Ui.dp(this, 16), Ui.dp(this, 12), Ui.dp(this, 16));
-        AlertDialog d = new AlertDialog.Builder(this).setTitle("Ambient light").setView(dots)
-                .setNegativeButton("More", (x, w) -> navigate(new Intent()
-                        .setClassName(LED, LED + ".YunlianLedColorSetNewActivity")))
-                .create();
-        for (int c : LIGHTS) {
-            TextView dot = Ui.text(this, c == 0 ? "Off" : "", 13, Color.WHITE, true);
-            dot.setGravity(Gravity.CENTER);
-            android.graphics.drawable.GradientDrawable g = new android.graphics.drawable.GradientDrawable();
-            g.setShape(android.graphics.drawable.GradientDrawable.OVAL);
-            g.setColor(0xFF000000 | c);
-            g.setStroke(Ui.dp(this, 2), 0x55FFFFFF);
-            dot.setBackground(g);
-            dot.setOnClickListener(v -> {
-                if (!setLight(c)) {
-                    d.dismiss();
-                    navigate(new Intent().setClassName(LED, LED + ".YunlianLedColorSetNewActivity"));
-                }
-            });
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(Ui.dp(this, 44), Ui.dp(this, 44));
-            lp.setMargins(Ui.dp(this, 6), Ui.dp(this, 6), Ui.dp(this, 6), Ui.dp(this, 6));
-            if (dots.getChildCount() == 0 || ((LinearLayout) dots.getChildAt(dots.getChildCount() - 1)).getChildCount() == 5)
-                dots.addView(new LinearLayout(this));
-            ((LinearLayout) dots.getChildAt(dots.getChildCount() - 1)).addView(dot, lp);
-        }
-        d.show();
-    }
-
-    // False when the firmware refuses the write; the caller opens the LED app instead.
-    private static boolean setLight(int rgb) {
-        try {
-            Class<?> sp = Class.forName("android.os.SystemProperties");
-            String[] was = ((String) sp.getMethod("get", String.class, String.class)
-                    .invoke(null, LED_SAVED, "0-0-0-4-0.5-0")).split("-");
-            StringBuilder s = new StringBuilder((rgb >> 16 & 255) + "-" + (rgb >> 8 & 255) + "-" + (rgb & 255));
-            for (int i = 3; i < was.length; i++) s.append('-').append(was[i]);
-            java.lang.reflect.Method set = sp.getMethod("set", String.class, String.class);
-            set.invoke(null, LED_NOW, s.toString());
-            set.invoke(null, LED_SAVED, s.toString());
-            return true;
-        } catch (Exception e) {
-            Log.w("CarHome", "ambient light", e);
-            return false;
-        }
     }
 
     private void goHome() {
