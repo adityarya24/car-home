@@ -35,7 +35,7 @@ class AmbientLight {
     static final int TOGGLE = 0, MUSIC = 2;
     private static final String TAG = "CarHomeLight", PREFS = "light", MAC = "mac";
     private static final UUID CCCD = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
-    private static final String[] SERVICES = {"0000ae30-0000-1000-8000-00805f9b34fb",
+    private static final String[] SERVICES = {"0000ae30-0000-1000-8000-00805f9b34fb", "0000af30-0000-1000-8000-00805f9b34fb",
             "0000ae00-0000-1000-8000-00805f9b34fb", "00010203-0405-0607-0809-0a0b0c0d1910"};
 
     private final Context c;
@@ -47,6 +47,7 @@ class AmbientLight {
     private BluetoothLeScanner le;
     private ScanCallback scan;
     private boolean finished;
+    private final java.util.Set<String> seen = new java.util.HashSet<>();
 
     // done gets a short word for the button: "On", "Off", "Music", or why it failed.
     static void run(Context c, int job, Consumer<String> done) {
@@ -71,13 +72,17 @@ class AmbientLight {
             connect(bt.getRemoteDevice(mac));
             return;
         }
-        // First time: find the kit by the name its manual gives, "Blaupunkt M18...".
+        // First time: find the kit. It advertises as "Pocket Link ..."; its app
+        // shows any "Pocket" device as "Blaupunkt M18".
         le = bt.getBluetoothLeScanner();
         scan = new ScanCallback() {
             @Override
             public void onScanResult(int type, ScanResult r) {
-                String name = r.getDevice().getName();
-                if (name == null || !name.toLowerCase().contains("m18") || scan == null) return;
+                String name = r.getScanRecord() != null ? r.getScanRecord().getDeviceName() : null;
+                if (name == null) name = r.getDevice().getName();
+                if (seen.add(r.getDevice().getAddress())) Log.i(TAG, "saw " + name + " " + r.getDevice().getAddress()
+                        + " rssi " + r.getRssi() + " " + (r.getScanRecord() == null ? "" : hex(r.getScanRecord().getBytes())));
+                if (name == null || !(name.toLowerCase().startsWith("pocket") || name.contains("M18")) || scan == null) return;
                 le.stopScan(this);
                 scan = null;
                 c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
@@ -105,6 +110,9 @@ class AmbientLight {
 
             @Override
             public void onServicesDiscovered(BluetoothGatt g, int status) {
+                for (BluetoothGattService svc : g.getServices())
+                    for (BluetoothGattCharacteristic ch : svc.getCharacteristics())
+                        Log.i(TAG, "has " + svc.getUuid() + " / " + ch.getUuid() + " props " + ch.getProperties());
                 BluetoothGattCharacteristic rx = null;
                 for (String s : SERVICES) {
                     BluetoothGattService svc = g.getService(UUID.fromString(s));
