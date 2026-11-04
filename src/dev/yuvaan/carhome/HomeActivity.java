@@ -75,6 +75,7 @@ public class HomeActivity extends Activity {
     private ImageView songIcon;
     private ProgressBar progress;
     private View musicCard;
+    private static final String LIGHT = "✨ Ambient light";
     private MediaController controller;
     private MediaSessionManager sessions;
     private AppPanel maps, video;
@@ -185,7 +186,7 @@ public class HomeActivity extends Activity {
         left.addView(gap(), new LinearLayout.LayoutParams(-1, Ui.dp(this, 8)));
         left.addView(musicCard(), new LinearLayout.LayoutParams(-1, 0, 1));
         left.addView(gap(), new LinearLayout.LayoutParams(-1, Ui.dp(this, 8)));
-        left.addView(shortcuts(), new LinearLayout.LayoutParams(-1, Ui.dp(this, 46)));
+        left.addView(shortcuts(), new LinearLayout.LayoutParams(-1, Ui.dp(this, 94)));
 
         row.addView(gap(), new LinearLayout.LayoutParams(Ui.dp(this, 10), -1));
         row.addView(mapsPanel(), new LinearLayout.LayoutParams(0, -1, MAPS_WEIGHT));
@@ -367,24 +368,29 @@ public class HomeActivity extends Activity {
         return lp;
     }
 
-    // Three big one-tap jobs under the music card; the apps are in the Dock.
+    // Four big one-tap jobs under the music card, two rows of two; the apps are in the Dock.
     private View shortcuts() {
-        LinearLayout r = new LinearLayout(this);
-        shortcut(r, "🏠 Home", v -> goHome());
-        r.getChildAt(0).setOnLongClickListener(v -> {
+        LinearLayout grid = new LinearLayout(this);
+        grid.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout top = new LinearLayout(this), bottom = new LinearLayout(this);
+        grid.addView(top, new LinearLayout.LayoutParams(-1, 0, 1));
+        grid.addView(gap(), new LinearLayout.LayoutParams(-1, Ui.dp(this, 6)));
+        grid.addView(bottom, new LinearLayout.LayoutParams(-1, 0, 1));
+        shortcut(top, "🏠 Home", v -> goHome());
+        top.getChildAt(0).setOnLongClickListener(v -> {
             askHome();
             return true;
         });
-        shortcut(r, "⛽ Petrol", v -> navigate(new Intent(Intent.ACTION_VIEW,
+        shortcut(top, "⛽ Petrol", v -> navigate(new Intent(Intent.ACTION_VIEW,
                 Uri.parse("geo:0,0?q=" + Uri.encode("petrol pump"))).setPackage(MAPS)));
-        shortcut(r, "🧸 Kids", v -> kidsMode());
+        shortcut(bottom, "🧸 Kids", v -> kidsMode());
         // Car's ambient light kit: tap switches it on or off, long press puts it on music.
-        shortcut(r, "✨", v -> light((TextView) v, AmbientLight.TOGGLE));
-        r.getChildAt(3).setOnLongClickListener(v -> {
+        shortcut(bottom, LIGHT, v -> light((TextView) v, AmbientLight.TOGGLE));
+        bottom.getChildAt(1).setOnLongClickListener(v -> {
             light((TextView) v, AmbientLight.MUSIC);
             return true;
         });
-        return r;
+        return grid;
     }
 
     private void light(TextView b, int job) {
@@ -394,7 +400,7 @@ public class HomeActivity extends Activity {
         AmbientLight.run(this, job, word -> {
             b.setText("✨ " + word);
             main.postDelayed(() -> {
-                b.setText("✨");
+                b.setText(LIGHT);
                 b.setEnabled(true);
             }, 2500);
         });
